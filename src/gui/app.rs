@@ -7,6 +7,64 @@ use crate::process::manager::{ProcessInfo, get_all_processes, set_process_priori
 use crate::process::manager::PriorityClass as WinPriorityClass;
 use crate::process::gamemode::GameMode;
 
+// Professional color scheme for EndlessOpt - Glassmorphism style
+struct Colors {
+    primary: Color32,
+    secondary: Color32,
+    cta: Color32,
+    success: Color32,
+    warning: Color32,
+    error: Color32,
+    background: Color32,
+    surface: Color32,
+    glass: Color32,
+    text: Color32,
+    text_secondary: Color32,
+    border: Color32,
+    shadow: Color32,
+    accent: Color32,
+}
+
+impl Colors {
+    fn modern_dark() -> Self {
+        Colors {
+            primary: Color32::from_rgb(15, 23, 42),       // Navy dark (#0F172A)
+            secondary: Color32::from_rgb(51, 65, 85),     // Navy medium (#334155)
+            cta: Color32::from_rgb(3, 105, 161),         // System blue (#0369A1)
+            success: Color32::from_rgb(34, 197, 94),      // Success green (#22C55E)
+            warning: Color32::from_rgb(251, 191, 36),     // Warning amber (#FBBF24)
+            error: Color32::from_rgb(239, 68, 68),        // Error red (#EF4444)
+            background: Color32::from_rgb(2, 6, 23),      // Very dark (#020617)
+            surface: Color32::from_rgb(30, 41, 59),      // Surface (#1E293B)
+            glass: Color32::from_rgba_unmultiplied(255, 255, 255, 20), // Glass white with low opacity
+            text: Color32::from_rgb(248, 250, 252),      // Off-white (#F8FAFC)
+            text_secondary: Color32::from_rgb(148, 163, 184), // Slate gray (#94A3B8)
+            border: Color32::from_rgba_unmultiplied(255, 255, 255, 25), // Subtle border
+            shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 51),    // Shadow
+            accent: Color32::from_rgb(56, 189, 248),     // Sky blue (#38BDF8)
+        }
+    }
+
+    fn modern_light() -> Self {
+        Colors {
+            primary: Color32::from_rgb(15, 23, 42),       // Navy dark (#0F172A)
+            secondary: Color32::from_rgb(51, 65, 85),     // Navy medium (#334155)
+            cta: Color32::from_rgb(3, 105, 161),         // System blue (#0369A1)
+            success: Color32::from_rgb(34, 197, 94),      // Success green (#22C55E)
+            warning: Color32::from_rgb(251, 191, 36),     // Warning amber (#FBBF24)
+            error: Color32::from_rgb(239, 68, 68),        // Error red (#EF4444)
+            background: Color32::from_rgb(248, 250, 252), // Light gray (#F8FAFC)
+            surface: Color32::from_rgb(255, 255, 255),    // White (#FFFFFF)
+            glass: Color32::from_rgba_unmultiplied(255, 255, 255, 230), // Glass white
+            text: Color32::from_rgb(15, 23, 42),          // Dark navy (#0F172A)
+            text_secondary: Color32::from_rgb(71, 85, 105), // Slate (#475569)
+            border: Color32::from_rgba_unmultiplied(0, 0, 0, 25),      // Subtle border
+            shadow: Color32::from_rgba_unmultiplied(0, 0, 0, 25),     // Shadow
+            accent: Color32::from_rgb(56, 189, 248),      // Sky blue (#38BDF8)
+        }
+    }
+}
+
 /// Main application tabs
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -45,6 +103,13 @@ pub struct EndlessOptApp {
 
     // Optimization results
     last_optimization_result: Option<String>,
+
+    // Color scheme
+    colors: Colors,
+    is_dark_mode: bool,
+
+    // Version info
+    version: String,
 }
 
 impl EndlessOptApp {
@@ -53,8 +118,23 @@ impl EndlessOptApp {
         // Load configuration
         let config = Config::load().unwrap_or_default();
 
-        // Set initial theme
+        // Determine dark mode
+        let is_dark_mode = match config.theme {
+            Theme::Dark => true,
+            Theme::Light => false,
+            Theme::System => {
+                // Try to detect system preference
+                cc.egui_ctx.style().visuals.dark_mode
+            }
+        };
+
+        // Set initial theme and colors
         setup_theme(&cc.egui_ctx, &config.theme);
+        let colors = if is_dark_mode {
+            Colors::modern_dark()
+        } else {
+            Colors::modern_light()
+        };
 
         Self {
             current_tab: Tab::Dashboard,
@@ -73,6 +153,9 @@ impl EndlessOptApp {
             optimization_in_progress: false,
             game_mode_active: false,
             last_optimization_result: None,
+            colors,
+            is_dark_mode,
+            version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }
 
@@ -205,7 +288,7 @@ impl EndlessOptApp {
 }
 
 impl eframe::App for EndlessOptApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Update monitoring data
         self.update_monitoring();
 
@@ -227,7 +310,7 @@ impl eframe::App for EndlessOptApp {
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if self.game_mode_active {
-                        ui.colored_label(Color32::GREEN, RichText::new("🎮 Game Mode Active").size(14.0));
+                        ui.colored_label(Color32::GREEN, RichText::new("Game Mode Active").size(14.0));
                     }
                 });
             });
@@ -258,106 +341,299 @@ impl eframe::App for EndlessOptApp {
 
 // Implement tab rendering methods
 impl EndlessOptApp {
-    fn show_dashboard(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    fn show_dashboard(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context) {
+        // Glassmorphism background
+        ui.painter().rect_filled(
+            ui.available_rect_before_wrap(),
+            0.0,
+            self.colors.background
+        );
+
         ui.vertical_centered(|ui| {
-            ui.heading(RichText::new("System Dashboard").size(28.0));
             ui.add_space(20.0);
 
-            // System status cards
+            // Modern title with glass effect
+            egui::Frame::none()
+                .fill(self.colors.glass)
+                .stroke(egui::Stroke::new(1.0, self.colors.border))
+                .rounding(16.0)
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(20.0);
+                        ui.heading(RichText::new("EndlessOpt").size(36.0)
+                            .color(self.colors.text)
+                            .strong());
+                        ui.label(RichText::new("System Optimizer").size(16.0)
+                            .color(self.colors.text_secondary));
+                        ui.label(RichText::new(format!("v{}", self.version)).size(12.0)
+                            .color(self.colors.text_secondary));
+                        ui.add_space(15.0);
+                    });
+                });
+
+            ui.add_space(30.0);
+
+            // Status metrics row - Professional dashboard layout
             ui.horizontal(|ui| {
-                // CPU card
-                ui.group(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("CPU Usage").size(16.0));
-                        ui.label(RichText::new(format!("{:.1}%", self.cpu_usage)).size(32.0).color(get_usage_color(self.cpu_usage)));
+                // CPU Metric Card - Glassmorphism
+                egui::Frame::none()
+                    .fill(self.colors.glass)
+                    .stroke(egui::Stroke::new(1.0, self.colors.border))
+                    .rounding(12.0)
+                    .shadow(egui::epaint::Shadow {
+                        offset: egui::vec2(0.0, 4.0),
+                        blur: 8.0,
+                        spread: 0.0,
+                        color: self.colors.shadow,
+                    })
+                    .show(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(15.0);
+                            ui.label(RichText::new("CPU Usage").size(14.0)
+                                .color(self.colors.text_secondary));
+                            ui.add_space(8.0);
+                            ui.label(RichText::new(format!("{:.1}%", self.cpu_usage)).size(32.0)
+                                .color(get_usage_color(self.cpu_usage, &self.colors))
+                                .strong());
+                            ui.label(RichText::new("Processor").size(12.0)
+                                .color(self.colors.text_secondary));
+                            ui.add_space(15.0);
+                        });
                     });
-                });
 
-                ui.add_space(10.0);
+                ui.add_space(20.0);
 
-                // Memory card
-                ui.group(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("Memory Usage").size(16.0));
-                        ui.label(RichText::new(format!("{:.1}%", self.memory_usage)).size(32.0).color(get_usage_color(self.memory_usage)));
-                        if let Some(ref status) = self.memory_status {
-                            ui.label(RichText::new(format!(
-                                "{} / {}",
-                                MemoryStatus::format_bytes(status.total_phys - status.avail_phys),
-                                MemoryStatus::format_bytes(status.total_phys)
-                            )).size(12.0));
-                        }
+                // Memory Metric Card - Glassmorphism
+                egui::Frame::none()
+                    .fill(self.colors.glass)
+                    .stroke(egui::Stroke::new(1.0, self.colors.border))
+                    .rounding(12.0)
+                    .shadow(egui::epaint::Shadow {
+                        offset: egui::vec2(0.0, 4.0),
+                        blur: 8.0,
+                        spread: 0.0,
+                        color: self.colors.shadow,
+                    })
+                    .show(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(15.0);
+                            ui.label(RichText::new("Memory Usage").size(14.0)
+                                .color(self.colors.text_secondary));
+                            ui.add_space(8.0);
+                            ui.label(RichText::new(format!("{:.1}%", self.memory_usage)).size(32.0)
+                                .color(get_usage_color(self.memory_usage, &self.colors))
+                                .strong());
+                            if let Some(ref status) = self.memory_status {
+                                ui.label(RichText::new(format!(
+                                    "{} / {}",
+                                    MemoryStatus::format_bytes(status.total_phys - status.avail_phys),
+                                    MemoryStatus::format_bytes(status.total_phys)
+                                )).size(11.0).color(self.colors.text_secondary));
+                            }
+                            ui.label(RichText::new("RAM").size(12.0)
+                                .color(self.colors.text_secondary));
+                            ui.add_space(15.0);
+                        });
                     });
-                });
 
-                ui.add_space(10.0);
+                ui.add_space(20.0);
 
-                // Game mode card
-                ui.group(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("Game Mode").size(16.0));
-                        ui.label(RichText::new(if self.game_mode_active { "Active" } else { "Inactive" }).size(24.0)
-                            .color(if self.game_mode_active { Color32::GREEN } else { Color32::GRAY }));
+                // Game Mode Status - Glassmorphism
+                egui::Frame::none()
+                    .fill(self.colors.glass)
+                    .stroke(egui::Stroke::new(1.0, if self.game_mode_active {
+                        self.colors.success
+                    } else {
+                        self.colors.border
+                    }))
+                    .rounding(12.0)
+                    .shadow(egui::epaint::Shadow {
+                        offset: egui::vec2(0.0, 4.0),
+                        blur: 8.0,
+                        spread: 0.0,
+                        color: self.colors.shadow,
+                    })
+                    .show(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(15.0);
+                            ui.label(RichText::new("Game Mode").size(14.0)
+                                .color(self.colors.text_secondary));
+                            ui.add_space(8.0);
+                            ui.label(RichText::new(if self.game_mode_active {
+                                "Active"
+                            } else {
+                                "Inactive"
+                            }).size(24.0)
+                                .color(if self.game_mode_active {
+                                    self.colors.success
+                                } else {
+                                    self.colors.text_secondary
+                                })
+                                .strong());
+                            ui.label(RichText::new("Performance").size(12.0)
+                                .color(self.colors.text_secondary));
+                            ui.add_space(15.0);
+                        });
                     });
-                });
             });
 
             ui.add_space(30.0);
 
-            // Quick optimize button
-            if ui.add_sized(
-                [200.0, 50.0],
+            // Primary CTA Button - Professional styling
+            let button_response = ui.add_sized(
+                [240.0, 50.0],
                 egui::Button::new(
-                    RichText::new("⚡ Full Optimize").size(18.0)
+                    RichText::new("Full Optimize").size(18.0)
+                        .color(self.colors.text)
+                        .strong()
                 )
-            ).clicked() {
+                .fill(self.colors.cta)
+                .rounding(8.0)
+            );
+
+            // Hover effect simulation (visual feedback)
+            if button_response.hovered() {
+                ui.ctx().output_mut(|output| output.cursor_icon = egui::CursorIcon::PointingHand);
+            }
+
+            if button_response.clicked() {
                 self.perform_full_optimization();
             }
 
             ui.add_space(20.0);
 
-            // Show last optimization result
-            if let Some(ref result) = self.last_optimization_result {
-                ui.group(|ui| {
-                    ui.label(RichText::new("Last Optimization Result").size(14.0));
-                    ui.label(RichText::new(result).size(12.0));
-                });
+            // Status Panel - Glassmorphism
+            if !self.status_message.is_empty() || self.last_optimization_result.is_some() {
+                egui::Frame::none()
+                    .fill(self.colors.glass)
+                    .stroke(egui::Stroke::new(1.0, self.colors.border))
+                    .rounding(12.0)
+                    .shadow(egui::epaint::Shadow {
+                        offset: egui::vec2(0.0, 2.0),
+                        blur: 6.0,
+                        spread: 0.0,
+                        color: self.colors.shadow,
+                    })
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.add_space(15.0);
+
+                            if !self.status_message.is_empty() {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("Status:").size(14.0)
+                                        .color(self.colors.text_secondary)
+                                        .strong());
+                                    ui.label(RichText::new(&self.status_message).size(14.0)
+                                        .color(self.status_color));
+                                });
+                                ui.add_space(8.0);
+                            }
+
+                            if let Some(ref result) = self.last_optimization_result {
+                                ui.label(RichText::new("Last Optimization:").size(14.0)
+                                    .color(self.colors.text_secondary)
+                                    .strong());
+                                ui.label(RichText::new(result).size(13.0)
+                                    .color(self.colors.text));
+                            }
+
+                            ui.add_space(15.0);
+                        });
+                    });
             }
         });
     }
 
     fn show_optimize(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
-            ui.heading(RichText::new("System Optimization").size(28.0));
             ui.add_space(20.0);
 
+            // Section Title - Professional styling
+            egui::Frame::none()
+                .fill(self.colors.glass)
+                .stroke(egui::Stroke::new(1.0, self.colors.border))
+                .rounding(12.0)
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(15.0);
+                        ui.heading(RichText::new("System Optimization").size(28.0)
+                            .color(self.colors.text)
+                            .strong());
+                        ui.label(RichText::new("Quick actions to optimize your system").size(14.0)
+                            .color(self.colors.text_secondary));
+                        ui.add_space(15.0);
+                    });
+                });
+
+            ui.add_space(25.0);
+
             if self.optimization_in_progress {
-                ui.spinner();
-                ui.label("Optimizing...");
+                // Loading state with professional styling
+                egui::Frame::none()
+                    .fill(self.colors.glass)
+                    .stroke(egui::Stroke::new(1.0, self.colors.border))
+                    .rounding(12.0)
+                    .show(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(20.0);
+                            ui.spinner();
+                            ui.add_space(10.0);
+                            ui.label(RichText::new("Optimizing...").size(16.0)
+                                .color(self.colors.text_secondary));
+                            ui.add_space(20.0);
+                        });
+                    });
                 return;
             }
 
+            // Action Buttons Grid - Professional glassmorphism
             ui.horizontal(|ui| {
-                // Clean Memory button
-                if ui.add_sized(
-                    [150.0, 80.0],
-                    egui::Button::new(RichText::new("🧹\nClean Memory").size(14.0))
-                ).clicked() {
+                // Clean Memory Button
+                let clean_memory_response = ui.add_sized(
+                    [170.0, 100.0],
+                    egui::Button::new(
+                        RichText::new("Clean\nMemory").size(16.0)
+                            .color(self.colors.text)
+                            .strong()
+                    )
+                    .fill(self.colors.secondary)
+                    .rounding(12.0)
+                );
+
+                if clean_memory_response.hovered() {
+                    ui.ctx().output_mut(|output| output.cursor_icon = egui::CursorIcon::PointingHand);
+                }
+
+                if clean_memory_response.clicked() {
                     match crate::memory::optimizer::clean_system_memory() {
                         Ok(stats) => {
-                            self.show_status(&format!("Memory cleaned: {}", stats.summary()), Color32::GREEN);
+                            self.show_status(&format!("Memory cleaned: {}", stats.summary()), self.colors.success);
                         }
                         Err(e) => {
-                            self.show_status(&format!("Failed to clean memory: {}", e), Color32::RED);
+                            self.show_status(&format!("Failed to clean memory: {}", e), self.colors.error);
                         }
                     }
                 }
 
-                // Optimize Processes button
-                if ui.add_sized(
-                    [150.0, 80.0],
-                    egui::Button::new(RichText::new("⚙️\nOptimize Processes").size(14.0))
-                ).clicked() {
+                ui.add_space(20.0);
+
+                // Optimize Processes Button
+                let optimize_processes_response = ui.add_sized(
+                    [170.0, 100.0],
+                    egui::Button::new(
+                        RichText::new("Optimize\nProcesses").size(16.0)
+                            .color(self.colors.text)
+                            .strong()
+                    )
+                    .fill(self.colors.primary)
+                    .rounding(12.0)
+                );
+
+                if optimize_processes_response.hovered() {
+                    ui.ctx().output_mut(|output| output.cursor_icon = egui::CursorIcon::PointingHand);
+                }
+
+                if optimize_processes_response.clicked() {
                     match crate::process::manager::optimize_processes(
                         &self.config.game_processes,
                         &self.config.blacklisted_processes,
@@ -365,65 +641,44 @@ impl EndlessOptApp {
                         self.config.bg_priority.clone().into(),
                     ) {
                         Ok(stats) => {
-                            self.show_status(&format!("Processes optimized: {}", stats.summary()), Color32::GREEN);
+                            self.show_status(&format!("Processes optimized: {}", stats.summary()), self.colors.success);
                         }
                         Err(e) => {
-                            self.show_status(&format!("Failed to optimize processes: {}", e), Color32::RED);
-                        }
-                    }
-                }
-
-                // Clean Temp Files button
-                if ui.add_sized(
-                    [150.0, 80.0],
-                    egui::Button::new(RichText::new("🗑️\nClean Temp Files").size(14.0))
-                ).clicked() {
-                    match crate::utils::cleaner::clean_temp_files() {
-                        Ok(stats) => {
-                            self.show_status(&format!("Temp files cleaned: {}", stats.summary()), Color32::GREEN);
-                        }
-                        Err(e) => {
-                            self.show_status(&format!("Failed to clean temp files: {}", e), Color32::RED);
-                        }
-                    }
-                }
-
-                // Release Network button
-                if ui.add_sized(
-                    [150.0, 80.0],
-                    egui::Button::new(RichText::new("🌐\nRelease Network").size(14.0))
-                ).clicked() {
-                    match crate::utils::cleaner::release_network_resources() {
-                        Ok(stats) => {
-                            self.show_status(&format!("Network released: {}", stats.summary()), Color32::GREEN);
-                        }
-                        Err(e) => {
-                            self.show_status(&format!("Failed to release network: {}", e), Color32::RED);
+                            self.show_status(&format!("Failed to optimize processes: {}", e), self.colors.error);
                         }
                     }
                 }
             });
 
-            ui.add_space(30.0);
+            ui.add_space(25.0);
 
-            // Game Mode section
-            ui.group(|ui| {
-                ui.vertical(|ui| {
-                    ui.heading(RichText::new("Game Mode").size(18.0));
-
-                    if self.game_mode_active {
-                        if ui.button("Deactivate Game Mode").clicked() {
-                            self.deactivate_game_mode();
-                        }
-                    } else {
-                        if ui.button("Activate Game Mode").clicked() {
-                            self.activate_game_mode();
-                        }
-                    }
-
-                    ui.label(RichText::new("Optimizes system for gaming by prioritizing game processes and cleaning resources.").size(12.0).color(Color32::GRAY));
-                });
-            });
+            // Status Panel - Professional feedback
+            if !self.status_message.is_empty() {
+                egui::Frame::none()
+                    .fill(self.colors.glass)
+                    .stroke(egui::Stroke::new(1.0, self.status_color))
+                    .rounding(8.0)
+                    .shadow(egui::epaint::Shadow {
+                        offset: egui::vec2(0.0, 2.0),
+                        blur: 6.0,
+                        spread: 0.0,
+                        color: self.colors.shadow,
+                    })
+                    .show(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(12.0);
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("Status:").size(14.0)
+                                    .color(self.colors.text_secondary)
+                                    .strong());
+                                ui.label(RichText::new(&self.status_message).size(14.0)
+                                    .color(self.status_color)
+                                    .strong());
+                            });
+                            ui.add_space(12.0);
+                        });
+                    });
+            }
         });
     }
 
@@ -482,7 +737,7 @@ impl EndlessOptApp {
                         ui.label(process.priority.as_str());
 
                         // Context menu
-                        if ui.button("⋮").clicked() {
+                        if ui.button("...").clicked() {
                             self.selected_process = Some(idx);
                         }
                     });
@@ -710,13 +965,13 @@ impl EndlessOptApp {
 
 // Helper functions
 
-fn get_usage_color(usage: f32) -> Color32 {
+fn get_usage_color(usage: f32, colors: &Colors) -> Color32 {
     if usage < 50.0 {
-        Color32::GREEN
+        colors.success
     } else if usage < 80.0 {
-        Color32::YELLOW
+        colors.warning
     } else {
-        Color32::RED
+        colors.error
     }
 }
 

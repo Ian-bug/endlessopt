@@ -1,0 +1,30 @@
+{
+  "auto_optimize": false,
+  "auto_interval": 30,
+  "auto_game_mode": false,
+  "game_priority": "High",
+  "bg_priority": "BelowNormal",
+  "mem_clean": true,
+  "net_optimize": true,
+  "game_processes": [
+    "minecraft.exe",
+    "minecraftlauncher.exe",
+    "javaw.exe",
+    "steam.exe",
+    "epicgameslauncher.exe",
+    "battle.net.exe"
+  ],
+  "blacklisted_processes": [
+    "system",
+    "system idle process",
+    "registry",
+    "smss.exe",
+    "csrss.exe",
+    "wininit.exe",
+    "services.exe",
+    "lsass.exe",
+    "svchost.exe",
+    "explorer.exe"
+  ],
+  "theme": "Dark"
+}

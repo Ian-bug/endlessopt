@@ -1,9 +1,16 @@
 [package]
 name = "endlessopt"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["EndlessOpt Contributors"]
-description = "System optimization tool for Windows"
+description = "Professional system optimization tool for Windows with glassmorphism UI"
+license = "MIT"
+repository = "https://github.com/Ian-bug/endlessopt"
+readme = "README.md"
+keywords = ["system", "optimizer", "windows", "performance", "utility", "memory", "process-management"]
+categories = ["system-tools", "utility"]
+exclude = ["/.github", "/assets/src", "/assets/images", "/docs", "/target"]
+include = ["/assets/icon.ico", "/assets/icon.png", "/assets/icon.svg", "/config.json", "/LICENSE", "/README.md"]
 
 [dependencies]
 windows = { version = "0.58", features = [

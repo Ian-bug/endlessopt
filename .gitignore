@@ -13,8 +13,8 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
-# Config (local only)
-config.json
+# Config (local overrides only)
+config.local.json
 
 # Build
 *.exe

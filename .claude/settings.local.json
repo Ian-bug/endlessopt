@@ -7,7 +7,13 @@
       "mcp__zread__search_doc",
       "Bash(cargo init:*)",
       "Bash(cargo check:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(code .:*)",
+      "Bash(cargo build:*)",
+      "Bash(magick:*)",
+      "Bash(npx skills:*)",
+      "Bash(uipro init:*)",
+      "Bash(python:*)"
     ]
   }
 }
