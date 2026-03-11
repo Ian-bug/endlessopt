@@ -13,7 +13,9 @@
       "Bash(magick:*)",
       "Bash(npx skills:*)",
       "Bash(uipro init:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(gh repo:*)",
+      "Bash(gh release:*)"
     ]
   }
 }

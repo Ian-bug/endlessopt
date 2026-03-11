@@ -113,7 +113,7 @@ pub fn set_process_priority(pid: u32, priority: PriorityClass) -> ProcessResult<
         };
 
         let result = SetPriorityClass(handle, PROCESS_CREATION_FLAGS(priority_value));
-        CloseHandle(handle);
+        let _ = CloseHandle(handle);
 
         match result {
             Ok(_) => Ok(true),
@@ -131,7 +131,7 @@ pub fn get_process_priority(pid: u32) -> ProcessResult<PriorityClass> {
 
         // GetPriorityClass returns a value that can be converted to u32
         let priority_result = GetPriorityClass(handle);
-        CloseHandle(handle);
+        let _ = CloseHandle(handle);
 
         // Try to convert the result to a u32 value
         // The exact type depends on the windows crate version
@@ -142,12 +142,56 @@ pub fn get_process_priority(pid: u32) -> ProcessResult<PriorityClass> {
     }
 }
 
-/// Kill a specific process
+/// Check if a process is protected and should not be killed
+pub fn is_protected_process(name: &str) -> bool {
+    let protected = [
+        // Critical Windows system processes
+        "system",
+        "system idle process",
+        "registry",
+        "smss.exe",
+        "csrss.exe",
+        "wininit.exe",
+        "services.exe",
+        "lsass.exe",
+        "winlogon.exe",
+        "svchost.exe",
+        "lsm.exe",
+        "explorer.exe",
+        "dwm.exe",
+        "audiodg.exe",
+        "spoolsv.exe",
+        "sched.exe",
+        "systemsettingsbroker.exe",
+        "sihost.exe",
+        "taskhost.exe",
+        "runtimebroker.exe",
+        "dashost.exe",
+        // Security processes
+        "msmpeng.exe", // Windows Defender
+        "securityhealthservice.exe",
+        "wdffilevalidator.exe",
+        // EndlessOpt itself
+        "endlessopt.exe",
+    ];
+
+    protected.iter()
+        .any(|p| p.eq_ignore_ascii_case(name))
+}
+
+/// Kill a specific process (with protection check)
 pub fn kill_process(pid: u32) -> ProcessResult<bool> {
     let mut sys = System::new_all();
     sys.refresh_processes();
 
     if let Some(process) = sys.process(Pid::from_u32(pid)) {
+        let name = process.name();
+
+        // Check if process is protected
+        if is_protected_process(name) {
+            return Err(format!("Cannot kill protected process: {}", name).into());
+        }
+
         Ok(process.kill())
     } else {
         Err(format!("Process {} not found", pid).into())
@@ -246,5 +290,13 @@ mod tests {
     fn test_get_all_processes() {
         let processes = get_all_processes(&[]).unwrap();
         assert!(!processes.is_empty());
+    }
+
+    #[test]
+    fn test_protected_process() {
+        assert!(is_protected_process("system"));
+        assert!(is_protected_process("csrss.exe"));
+        assert!(is_protected_process("explorer.exe"));
+        assert!(!is_protected_process("notepad.exe"));
     }
 }

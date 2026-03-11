@@ -21,7 +21,7 @@ pub fn clean_process_memory(pid: u32) -> MemoryResult<bool> {
             Ok(h) => {
                 // Try to empty the working set
                 let result = EmptyWorkingSet(h);
-                CloseHandle(h);
+                let _ = CloseHandle(h);
 
                 match result {
                     Ok(_) => Ok(true),

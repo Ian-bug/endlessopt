@@ -7,6 +7,10 @@ use crate::process::manager::{ProcessInfo, get_all_processes, set_process_priori
 use crate::process::manager::PriorityClass as WinPriorityClass;
 use crate::process::gamemode::GameMode;
 
+// Constants for monitoring intervals
+const MONITORING_INTERVAL_SECS: u64 = 1;
+const PROCESS_REFRESH_INTERVAL_SECS: u64 = 5;
+
 // Professional color scheme for EndlessOpt - Glassmorphism style
 struct Colors {
     primary: Color32,
@@ -110,6 +114,10 @@ pub struct EndlessOptApp {
 
     // Version info
     version: String,
+
+    // Confirmation dialogs
+    show_kill_confirmation: bool,
+    process_to_kill: Option<(usize, String)>,
 }
 
 impl EndlessOptApp {
@@ -156,13 +164,15 @@ impl EndlessOptApp {
             colors,
             is_dark_mode,
             version: env!("CARGO_PKG_VERSION").to_string(),
+            show_kill_confirmation: false,
+            process_to_kill: None,
         }
     }
 
     /// Update system monitoring data
     fn update_monitoring(&mut self) {
         let now = Instant::now();
-        if now.duration_since(self.last_update).as_secs() >= 1 {
+        if now.duration_since(self.last_update).as_secs() >= MONITORING_INTERVAL_SECS {
             // Update memory status
             if let Ok(status) = MemoryStatus::get() {
                 self.memory_usage = status.memory_load as f32;
@@ -176,8 +186,9 @@ impl EndlessOptApp {
                 .map(|c| c.cpu_usage())
                 .sum::<f32>() / sys.cpus().len() as f32;
 
-            // Update process list occasionally
-            if now.duration_since(self.last_update).as_secs() >= 5 {
+            // Update process list occasionally (only when viewing Processes tab)
+            if self.current_tab == Tab::Processes &&
+               now.duration_since(self.last_update).as_secs() >= PROCESS_REFRESH_INTERVAL_SECS {
                 if let Ok(processes) = get_all_processes(&self.config.blacklisted_processes) {
                     self.processes = processes;
                 }
@@ -336,6 +347,11 @@ impl eframe::App for EndlessOptApp {
                 Tab::Settings => self.show_settings(ui),
             }
         });
+
+        // Kill confirmation dialog
+        if self.show_kill_confirmation {
+            self.show_kill_confirmation_dialog(ctx);
+        }
     }
 }
 
@@ -787,15 +803,9 @@ impl EndlessOptApp {
                                 ui.separator();
 
                                 if ui.button(RichText::new("Kill Process").color(Color32::RED)).clicked() {
-                                    match kill_process(pid) {
-                                        Ok(_) => {
-                                            self.show_status(&format!("Process {} killed", process_clone.name), Color32::GREEN);
-                                            self.selected_process = None;
-                                        }
-                                        Err(e) => {
-                                            self.show_status(&format!("Failed to kill process: {}", e), Color32::RED);
-                                        }
-                                    }
+                                    // Show confirmation dialog
+                                    self.process_to_kill = Some((idx, process_clone.name.clone()));
+                                    self.show_kill_confirmation = true;
                                 }
 
                                 if ui.button("Close").clicked() {
@@ -960,6 +970,75 @@ impl EndlessOptApp {
                 });
             });
         });
+    }
+
+    fn show_kill_confirmation_dialog(&mut self, ctx: &egui::Context) {
+        let (process_idx, process_name) = match &self.process_to_kill {
+            Some((idx, name)) => (*idx, name.clone()),
+            None => return,
+        };
+
+        egui::Window::new("Confirm Process Termination")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(10.0);
+                    ui.label(RichText::new("Are you sure you want to kill this process?")
+                        .size(16.0)
+                        .color(self.colors.text)
+                        .strong());
+                    ui.add_space(10.0);
+                    ui.label(RichText::new(format!("Process: {}", process_name))
+                        .size(14.0)
+                        .color(self.colors.error));
+                    ui.add_space(5.0);
+                    ui.label(RichText::new("This action cannot be undone.")
+                        .size(12.0)
+                        .color(self.colors.text_secondary));
+                    ui.add_space(15.0);
+
+                    ui.horizontal(|ui| {
+                        if ui.button("Cancel").clicked() {
+                            self.show_kill_confirmation = false;
+                            self.process_to_kill = None;
+                        }
+
+                        ui.add_space(10.0);
+
+                        if ui.button(RichText::new("Kill Process").color(Color32::RED)).clicked() {
+                            // Get the PID from the process list
+                            if process_idx < self.processes.len() {
+                                let pid = self.processes[process_idx].pid;
+                                match kill_process(pid) {
+                                    Ok(_) => {
+                                        self.show_status(
+                                            &format!("Process {} killed", process_name),
+                                            Color32::GREEN
+                                        );
+                                        self.selected_process = None;
+                                        // Refresh process list
+                                        if let Ok(processes) = get_all_processes(&self.config.blacklisted_processes) {
+                                            self.processes = processes;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        self.show_status(
+                                            &format!("Failed to kill process: {}", e),
+                                            Color32::RED
+                                        );
+                                    }
+                                }
+                            }
+                            self.show_kill_confirmation = false;
+                            self.process_to_kill = None;
+                        }
+                    });
+
+                    ui.add_space(10.0);
+                });
+            });
     }
 }
 

@@ -1,6 +1,7 @@
 use sysinfo::System;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct MemoryStatus {
     pub memory_load: u32,
     pub total_phys: u64,
