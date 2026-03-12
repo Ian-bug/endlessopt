@@ -1,52 +1,8 @@
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION,
 };
-use windows::Win32::Foundation::CloseHandle;
 use sysinfo::{System, Pid};
-
-/// Process priority classes matching Windows priority classes
-#[derive(Debug, Clone, Copy, Eq)]
-pub enum PriorityClass {
-    Idle = 0x00000040,
-    BelowNormal = 0x00004000,
-    Normal = 0x00000020,
-    AboveNormal = 0x00008000,
-    High = 0x00000080,
-    Realtime = 0x00000100,
-}
-
-impl PartialEq for PriorityClass {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_str() == other.as_str()
-    }
-}
-
-impl PriorityClass {
-    /// Convert from u32 to PriorityClass
-    pub fn from_u32(value: u32) -> Option<Self> {
-        match value {
-            0x00000040 => Some(PriorityClass::Idle),
-            0x00004000 => Some(PriorityClass::BelowNormal),
-            0x00000020 => Some(PriorityClass::Normal),
-            0x00008000 => Some(PriorityClass::AboveNormal),
-            0x00000080 => Some(PriorityClass::High),
-            0x00000100 => Some(PriorityClass::Realtime),
-            _ => None,
-        }
-    }
-
-    /// Get display name for priority
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            PriorityClass::Idle => "Idle",
-            PriorityClass::BelowNormal => "Below Normal",
-            PriorityClass::Normal => "Normal",
-            PriorityClass::AboveNormal => "Above Normal",
-            PriorityClass::High => "High",
-            PriorityClass::Realtime => "Realtime",
-        }
-    }
-}
+use crate::common::{PriorityClass, EndlessOptError, ProcessResult, SafeHandle};
 
 /// Information about a process
 #[derive(Debug, Clone)]
@@ -59,10 +15,20 @@ pub struct ProcessInfo {
     pub is_blacklisted: bool,
 }
 
-/// Result type for process operations
-pub type ProcessResult<T> = Result<T, Box<dyn std::error::Error>>;
-
 /// Get all processes currently running
+///
+/// Enumerates all running processes and returns detailed information.
+/// Processes are sorted by name for consistent display.
+///
+/// # Arguments
+/// - `blacklist`: Processes to mark as blacklisted (for UI purposes)
+///
+/// # Returns
+/// - Vector of ProcessInfo with PID, name, CPU, memory, priority
+///
+/// # Performance
+/// - Refreshes system state (typically 50-150ms)
+/// - Returns 200-300 processes on typical Windows system
 pub fn get_all_processes(blacklist: &[String]) -> ProcessResult<Vec<ProcessInfo>> {
     let mut sys = System::new_all();
     sys.refresh_processes();
@@ -95,12 +61,41 @@ pub fn get_all_processes(blacklist: &[String]) -> ProcessResult<Vec<ProcessInfo>
 }
 
 /// Set priority for a specific process
+///
+/// Changes the Windows priority class for a process using SetPriorityClass API.
+/// Higher priority processes get more CPU time, lower priority get less.
+///
+/// # Arguments
+/// - `pid`: Process ID
+/// - `priority`: Target priority class (Idle to Realtime)
+///
+/// # Returns
+/// - `Ok(true)`: Priority changed successfully
+/// - `Err(...)`: Process not found, access denied, or API error
+///
+/// # Safety
+/// - Requires PROCESS_SET_INFORMATION access
+/// - Realtime priority can make system unresponsive if misused
+/// - Handle automatically cleaned up via RAII
 pub fn set_process_priority(pid: u32, priority: PriorityClass) -> ProcessResult<bool> {
     use windows::Win32::System::Threading::SetPriorityClass;
     use windows::Win32::System::Threading::PROCESS_CREATION_FLAGS;
 
     unsafe {
-        let handle = OpenProcess(PROCESS_SET_INFORMATION, false, pid)?;
+        let handle = match OpenProcess(PROCESS_SET_INFORMATION, false, pid) {
+            Ok(h) => h,
+            Err(e) => {
+                return Err(EndlessOptError::Process {
+                    pid,
+                    name: None,
+                    operation: "set_priority".to_string(),
+                    details: format!("Failed to open process: {}", e),
+                }.into())
+            }
+        };
+
+        // SafeHandle will automatically close when it goes out of scope
+        let _safe_handle = SafeHandle::new(handle);
 
         let priority_value = match priority {
             PriorityClass::Idle => 0x00000040u32,
@@ -111,12 +106,14 @@ pub fn set_process_priority(pid: u32, priority: PriorityClass) -> ProcessResult<
             PriorityClass::Realtime => 0x00000100u32,
         };
 
-        let result = SetPriorityClass(handle, PROCESS_CREATION_FLAGS(priority_value));
-        let _ = CloseHandle(handle);
-
-        match result {
+        match SetPriorityClass(handle, PROCESS_CREATION_FLAGS(priority_value)) {
             Ok(_) => Ok(true),
-            Err(e) => Err(format!("Failed to set priority for process {}: {}", pid, e).into()),
+            Err(e) => Err(EndlessOptError::Process {
+                pid,
+                name: None,
+                operation: "set_priority".to_string(),
+                details: format!("Failed to set priority: {}", e),
+            }.into()),
         }
     }
 }
@@ -128,13 +125,14 @@ pub fn get_process_priority(pid: u32) -> ProcessResult<PriorityClass> {
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_INFORMATION, false, pid)?;
 
-        // GetPriorityClass returns a value that can be converted to u32
-        let priority_result = GetPriorityClass(handle);
-        let _ = CloseHandle(handle);
+        // SafeHandle will automatically close when it goes out of scope
+        let _safe_handle = SafeHandle::new(handle);
 
-        // Try to convert the result to a u32 value
-        // The exact type depends on the windows crate version
-        let priority_value = u32::from(priority_result);
+        // GetPriorityClass returns the priority class value directly
+        let priority_result = GetPriorityClass(handle);
+
+        // Convert to u32 for matching
+        let priority_value = priority_result as u32;
 
         PriorityClass::from_u32(priority_value)
             .ok_or_else(|| format!("Unknown priority class: {}", priority_value).into())
@@ -142,6 +140,24 @@ pub fn get_process_priority(pid: u32) -> ProcessResult<PriorityClass> {
 }
 
 /// Check if a process is protected and should not be killed
+///
+/// Protected processes include critical Windows components that should never
+/// be terminated as it would cause system instability or crashes.
+///
+/// # Protected Categories
+/// - **Core Windows**: system, registry, smss, csrss, wininit, services, lsass, winlogon
+/// - **System Services**: svchost, lsm, spoolsv, sched
+/// - **UI Components**: explorer, dwm, audiodg
+/// - **System Apps**: sihost, taskhost, runtimebroker, dashost, systemsettingsbroker
+/// - **Security**: msmpeng (Defender), securityhealthservice, wdffilevalidator
+/// - **Self-Protection**: endlessopt.exe
+///
+/// # Arguments
+/// - `name`: Process name (case-insensitive)
+///
+/// # Returns
+/// - `true`: Process is protected, cannot be killed
+/// - `false`: Process can be terminated
 pub fn is_protected_process(name: &str) -> bool {
     let protected = [
         // Critical Windows system processes
@@ -179,25 +195,69 @@ pub fn is_protected_process(name: &str) -> bool {
 }
 
 /// Kill a specific process (with protection check)
+///
+/// Terminates a process after checking if it's protected. This is a destructive
+/// operation that cannot be undone.
+///
+/// # Arguments
+/// - `pid`: Process ID to kill
+///
+/// # Returns
+/// - `Ok(true)`: Process was killed
+/// - `Err(...)`: Process not found, protected, or termination failed
+///
+/// # Safety
+/// - Protected processes return error before attempting termination
+/// - Critical system processes cannot be killed (26 protected processes)
+/// - Use with caution - killing system processes can crash Windows
 pub fn kill_process(pid: u32) -> ProcessResult<bool> {
     let mut sys = System::new_all();
     sys.refresh_processes();
 
     if let Some(process) = sys.process(Pid::from_u32(pid)) {
-        let name = process.name();
+        let name = process.name().to_string();
 
         // Check if process is protected
-        if is_protected_process(name) {
-            return Err(format!("Cannot kill protected process: {}", name).into());
+        if is_protected_process(&name) {
+            return Err(EndlessOptError::ProtectedProcess(
+                format!("Cannot kill protected process: {} (PID: {})", name, pid)
+            ).into());
         }
 
         Ok(process.kill())
     } else {
-        Err(format!("Process {} not found", pid).into())
+        Err(EndlessOptError::Process {
+            pid,
+            name: None,
+            operation: "kill".to_string(),
+            details: "Process not found".to_string(),
+        }.into())
     }
 }
 
 /// Optimize processes by setting appropriate priorities
+///
+/// Automatically adjusts process priorities based on whether they're games or
+/// background processes. Useful for gaming or performance optimization.
+///
+/// # Arguments
+/// - `game_processes`: List of game process names to prioritize
+/// - `blacklist`: Processes to skip entirely
+/// - `game_priority`: Priority for game processes (typically High)
+/// - `bg_priority`: Priority for background processes (typically BelowNormal)
+///
+/// # Returns
+/// - `Ok(OptimizeStats)`: Summary of changes made
+/// - `Err(...)`: System query or API errors
+///
+/// # Example
+/// ```rust
+/// let games = vec!["minecraft.exe".to_string()];
+/// let blacklist = vec!["system".to_string()];
+/// let stats = optimize_processes(&games, &blacklist,
+///                               PriorityClass::High,
+///                               PriorityClass::BelowNormal)?;
+/// ```
 pub fn optimize_processes(
     game_processes: &[String],
     blacklist: &[String],

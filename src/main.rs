@@ -1,10 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Hide console in release builds
 
+mod common;
 mod config;
 mod gui;
 mod memory;
 mod process;
 mod utils;
+mod validation;
 
 use eframe::egui;
 

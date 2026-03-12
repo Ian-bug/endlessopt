@@ -1,10 +1,11 @@
 use eframe::egui;
 use egui::{Color32, RichText};
 use std::time::Instant;
-use crate::config::{Config, PriorityClass, Theme};
+use crate::config::Config;
+use crate::common::PriorityClass;
+use crate::config::Theme;
 use crate::memory::monitor::MemoryStatus;
 use crate::process::manager::{ProcessInfo, get_all_processes, set_process_priority, kill_process};
-use crate::process::manager::PriorityClass as WinPriorityClass;
 use crate::process::gamemode::GameMode;
 
 // Constants for monitoring intervals
@@ -20,13 +21,15 @@ struct Colors {
     warning: Color32,
     error: Color32,
     background: Color32,
-    surface: Color32,
+    #[allow(dead_code)]
+    surface: Color32,  // Reserved for future UI components
     glass: Color32,
     text: Color32,
     text_secondary: Color32,
     border: Color32,
     shadow: Color32,
-    accent: Color32,
+    #[allow(dead_code)]
+    accent: Color32,  // Reserved for future UI components
 }
 
 impl Colors {
@@ -111,7 +114,8 @@ pub struct EndlessOptApp {
 
     // Color scheme
     colors: Colors,
-    is_dark_mode: bool,
+    #[allow(dead_code)]
+    is_dark_mode: bool,  // Track theme for future dynamic switching
 
     // Version info
     version: String,
@@ -231,8 +235,8 @@ impl EndlessOptApp {
         if let Ok(stats) = crate::process::manager::optimize_processes(
             &self.config.game_processes,
             &self.config.blacklisted_processes,
-            self.config.game_priority.clone().into(),
-            self.config.bg_priority.clone().into(),
+            self.config.game_priority,
+            self.config.bg_priority,
         ) {
             results.push(format!("Processes: {}", stats.summary()));
         }
@@ -268,8 +272,9 @@ impl EndlessOptApp {
         match game_mode.activate() {
             Ok(result) => {
                 self.game_mode_active = true;
+                let summary: String = result.summary();
                 self.show_status(
-                    &format!("Game mode activated! {}", result.summary()),
+                    &format!("Game mode activated! {}", summary),
                     Color32::GREEN
                 );
             }
@@ -296,8 +301,9 @@ impl EndlessOptApp {
         match game_mode.deactivate() {
             Ok(result) => {
                 self.game_mode_active = false;
+                let summary: String = result.summary();
                 self.show_status(
-                    &format!("Game mode deactivated! {}", result.summary()),
+                    &format!("Game mode deactivated! {}", summary),
                     Color32::GREEN
                 );
             }
@@ -747,22 +753,22 @@ impl EndlessOptApp {
                                 ui.label("Set Priority:");
                                 let pid = process_clone.pid;
                                 if ui.button("Idle").clicked() {
-                                    let _ = set_process_priority(pid, WinPriorityClass::Idle);
+                                    let _ = set_process_priority(pid, PriorityClass::Idle);
                                 }
                                 ui.horizontal(|ui| {
                                     if ui.button("Below Normal").clicked() {
-                                        let _ = set_process_priority(pid, WinPriorityClass::BelowNormal);
+                                        let _ = set_process_priority(pid, PriorityClass::BelowNormal);
                                     }
                                     if ui.button("Normal").clicked() {
-                                        let _ = set_process_priority(pid, WinPriorityClass::Normal);
+                                        let _ = set_process_priority(pid, PriorityClass::Normal);
                                     }
                                 });
                                 ui.horizontal(|ui| {
                                     if ui.button("Above Normal").clicked() {
-                                        let _ = set_process_priority(pid, WinPriorityClass::AboveNormal);
+                                        let _ = set_process_priority(pid, PriorityClass::AboveNormal);
                                     }
                                     if ui.button("High").clicked() {
-                                        let _ = set_process_priority(pid, WinPriorityClass::High);
+                                        let _ = set_process_priority(pid, PriorityClass::High);
                                     }
                                 });
 
@@ -1068,21 +1074,6 @@ fn setup_theme(ctx: &egui::Context, theme: &Theme) {
             } else {
                 ctx.set_visuals(egui::Visuals::light());
             }
-        }
-    }
-}
-
-// Conversion implementations
-
-impl From<PriorityClass> for crate::process::manager::PriorityClass {
-    fn from(p: PriorityClass) -> Self {
-        match p {
-            PriorityClass::Idle => crate::process::manager::PriorityClass::Idle,
-            PriorityClass::BelowNormal => crate::process::manager::PriorityClass::BelowNormal,
-            PriorityClass::Normal => crate::process::manager::PriorityClass::Normal,
-            PriorityClass::AboveNormal => crate::process::manager::PriorityClass::AboveNormal,
-            PriorityClass::High => crate::process::manager::PriorityClass::High,
-            PriorityClass::Realtime => crate::process::manager::PriorityClass::Realtime,
         }
     }
 }

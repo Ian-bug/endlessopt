@@ -1,5 +1,5 @@
-use crate::process::manager::{PriorityClass, set_process_priority};
-use crate::process::manager::ProcessResult;
+use crate::process::manager::{set_process_priority};
+use crate::common::{PriorityClass, ProcessResult};
 use crate::memory::optimizer::{clean_system_memory_filtered, CleanStats};
 use sysinfo::System;
 
@@ -11,7 +11,8 @@ pub struct GameMode {
     pub game_priority: PriorityClass,
     pub bg_priority: PriorityClass,
     pub clean_memory: bool,
-    pub optimize_network: bool,
+    #[allow(dead_code)]
+    pub optimize_network: bool,  // Reserved for future network optimization
 }
 
 impl GameMode {
@@ -105,7 +106,7 @@ impl GameMode {
         let mut failed_count = 0;
 
         // Restore all processes to normal priority
-        for (pid, _) in sys.processes() {
+        for pid in sys.processes().keys() {
             match set_process_priority(pid.as_u32(), PriorityClass::Normal) {
                 Ok(_) => restored_count += 1,
                 Err(_) => failed_count += 1,
@@ -142,7 +143,8 @@ impl GameMode {
 /// Result of game mode activation
 #[derive(Debug, Clone)]
 pub struct ActivationResult {
-    pub games_detected: Vec<(u32, String)>,
+    #[allow(dead_code)]
+    pub games_detected: Vec<(u32, String)>,  // Detected game PIDs and names
     pub game_count: usize,
     pub background_processes_optimized: usize,
     pub failed_count: usize,

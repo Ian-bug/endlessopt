@@ -1,8 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-
-/// Result type for cleaning operations
-pub type CleanResult<T> = Result<T, Box<dyn std::error::Error>>;
+use crate::common::{CleanResult, EndlessOptError};
 
 /// Get all temporary directories on the system
 pub fn get_temp_directories() -> Vec<PathBuf> {
@@ -18,7 +16,7 @@ pub fn get_temp_directories() -> Vec<PathBuf> {
     }
 
     // User temp directory
-    if let Some(user_profile) = std::env::var("USERPROFILE").ok() {
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
         let user_temp = PathBuf::from(user_profile).join("AppData").join("Local").join("Temp");
         temp_dirs.push(user_temp);
     }
@@ -56,7 +54,13 @@ pub fn clean_temp_directory(path: &Path) -> CleanResult<CleanStats> {
 
     let entries = match fs::read_dir(path) {
         Ok(entries) => entries,
-        Err(e) => return Err(format!("Failed to read directory {}: {}", path.display(), e).into()),
+        Err(e) => {
+            return Err(EndlessOptError::FileSystem {
+                path: path.display().to_string(),
+                operation: "read_directory".to_string(),
+                details: e.to_string(),
+            }.into())
+        }
     };
 
     for entry in entries {
@@ -80,7 +84,9 @@ pub fn clean_temp_directory(path: &Path) -> CleanResult<CleanStats> {
                 files_deleted += 1;
                 bytes_freed += size;
             } else {
-                errors.push(format!("Failed to delete: {}", entry_path.display()));
+                errors.push(format!("Failed to delete {}: {}",
+                                   entry_path.display(),
+                                   std::io::Error::last_os_error()));
             }
         } else if metadata.is_dir() {
             // Try to clean and remove the directory
@@ -124,7 +130,8 @@ pub fn clean_temp_files() -> CleanResult<SystemCleanStats> {
                 total_stats.errors.extend(stats.errors);
             }
             Err(e) => {
-                total_stats.errors.push(format!("Failed to clean {}: {}", dir.display(), e));
+                total_stats.errors.push(format!("Failed to clean {}: {}",
+                                               dir.display(), e));
             }
         }
     }
@@ -142,7 +149,7 @@ pub fn release_network_resources() -> CleanResult<NetworkStats> {
 
     // Flush DNS cache
     match Command::new("ipconfig")
-        .args(&["/flushdns"])
+        .args(["/flushdns"])
         .output()
     {
         Ok(output) => {
@@ -153,8 +160,8 @@ pub fn release_network_resources() -> CleanResult<NetworkStats> {
                 errors.push("Failed to flush DNS cache".to_string());
             }
         }
-        Err(_) => {
-            errors.push("Failed to execute ipconfig".to_string());
+        Err(e) => {
+            errors.push(format!("Failed to execute ipconfig: {}", e));
         }
     }
 

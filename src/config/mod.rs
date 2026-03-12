@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use crate::common::{PriorityClass, ConfigResult, EndlessOptError};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -14,16 +15,6 @@ pub struct Config {
     pub game_processes: Vec<String>,
     pub blacklisted_processes: Vec<String>,
     pub theme: Theme,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum PriorityClass {
-    Idle,
-    BelowNormal,
-    Normal,
-    AboveNormal,
-    High,
-    Realtime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -67,13 +58,21 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load() -> ConfigResult<Self> {
         let config_path = Self::get_config_path();
 
         if config_path.exists() {
-            let content = fs::read_to_string(&config_path)?;
-            let config: Config = serde_json::from_str(&content)?;
-            Ok(config)
+            let content = fs::read_to_string(&config_path).map_err(|e| {
+                Box::new(EndlessOptError::FileSystem {
+                    path: config_path.display().to_string(),
+                    operation: "read".to_string(),
+                    details: e.to_string(),
+                }) as Box<dyn std::error::Error>
+            })?;
+
+            serde_json::from_str(&content).map_err(|e| {
+                Box::new(EndlessOptError::Config(format!("Failed to parse config: {}", e))) as Box<dyn std::error::Error>
+            })
         } else {
             let default = Config::default();
             default.save()?;
@@ -81,19 +80,38 @@ impl Config {
         }
     }
 
-    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save(&self) -> ConfigResult<()> {
         let config_path = Self::get_config_path();
-        fs::create_dir_all(config_path.parent().unwrap())?;
-        let content = serde_json::to_string_pretty(self)?;
-        fs::write(&config_path, content)?;
+
+        if let Some(parent) = config_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                Box::new(EndlessOptError::FileSystem {
+                    path: parent.display().to_string(),
+                    operation: "create_dir".to_string(),
+                    details: e.to_string(),
+                }) as Box<dyn std::error::Error>
+            })?;
+        }
+
+        let content = serde_json::to_string_pretty(self).map_err(|e| {
+            Box::new(EndlessOptError::Config(format!("Failed to serialize config: {}", e))) as Box<dyn std::error::Error>
+        })?;
+
+        fs::write(&config_path, content).map_err(|e| {
+            Box::new(EndlessOptError::FileSystem {
+                path: config_path.display().to_string(),
+                operation: "write".to_string(),
+                details: e.to_string(),
+            }) as Box<dyn std::error::Error>
+        })?;
+
         Ok(())
     }
 
     fn get_config_path() -> PathBuf {
         // Try to get user's home directory, fallback to current directory
-        if let Some(home) = std::env::var("USERPROFILE")
+        if let Ok(home) = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
-            .ok()
         {
             let mut path = PathBuf::from(home);
             path.push(".endlessopt");

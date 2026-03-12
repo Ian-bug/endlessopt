@@ -59,6 +59,7 @@ impl MemoryStatus {
     }
 
     /// Get memory usage percentage as f32
+    #[allow(dead_code)]
     pub fn get_memory_usage_percent() -> Result<f32, Box<dyn std::error::Error>> {
         let status = Self::get()?;
         Ok(status.memory_load as f32)
