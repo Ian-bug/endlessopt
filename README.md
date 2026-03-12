@@ -1,6 +1,6 @@
 <div align="center">
 
-  ![EndlessOpt Logo](assets/icon.png)
+  ![EndlessOpt Logo](assets/icon.svg)
 
   # EndlessOpt
 
