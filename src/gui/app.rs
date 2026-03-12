@@ -212,9 +212,11 @@ impl EndlessOptApp {
 
         let mut results = Vec::new();
 
-        // Clean memory
-        if let Ok(stats) = crate::memory::optimizer::clean_system_memory_filtered(&self.config.blacklisted_processes) {
-            results.push(format!("Memory: {}", stats.summary()));
+        // PCL-style advanced memory optimization
+        if let Ok(result) = crate::memory::optimizer::optimize_memory_pcl_style(
+            crate::memory::optimizer::OptimizationLevel::Aggressive
+        ) {
+            results.push(format!("Memory: {}", result.summary()));
         }
 
         // Optimize processes
@@ -573,9 +575,11 @@ impl EndlessOptApp {
                 }
 
                 if clean_memory_response.clicked() {
-                    match crate::memory::optimizer::clean_system_memory_filtered(&self.config.blacklisted_processes) {
-                        Ok(stats) => {
-                            self.show_status(&format!("Memory cleaned: {}", stats.summary()), self.colors.success);
+                    match crate::memory::optimizer::optimize_memory_pcl_style(
+                        crate::memory::optimizer::OptimizationLevel::Aggressive
+                    ) {
+                        Ok(result) => {
+                            self.show_status(&result.user_friendly_summary(), self.colors.success);
                         }
                         Err(e) => {
                             self.show_status(&format!("Failed to clean memory: {}", e), self.colors.error);
